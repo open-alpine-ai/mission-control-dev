@@ -83,6 +83,11 @@ services:
       # Optional: OpenClaw home path if mounted into container
       # OPENCLAW_HOME: "/openclaw"
 
+      # Recommended for Docker deployments where gateway runs outside the container
+      # (prevents Local Mode fallback on refresh):
+      # OPENCLAW_GATEWAY_HOST: "10.1.10.140"
+      # OPENCLAW_GATEWAY_PORT: "18789"
+
     volumes:
       # Persist SQLite DB and app state
       - mission-control-data:/app/.data
