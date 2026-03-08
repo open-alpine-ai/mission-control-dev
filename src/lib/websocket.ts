@@ -46,8 +46,10 @@ interface GatewayMessage {
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
+  const reconnectCooldownTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
   const pingIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined)
   const maxReconnectAttempts = 10
+  const reconnectCooldownMs = 120_000
   const reconnectUrl = useRef<string>('')
   const authTokenRef = useRef<string>('')
   const requestIdRef = useRef<number>(0)
@@ -357,6 +359,10 @@ export function useWebSocket() {
       log.info('Handshake complete')
       handshakeCompleteRef.current = true
       reconnectAttemptsRef.current = 0
+      if (reconnectCooldownTimeoutRef.current) {
+        clearTimeout(reconnectCooldownTimeoutRef.current)
+        reconnectCooldownTimeoutRef.current = undefined
+      }
       // Cache device token if returned by gateway
       if (frame.result?.deviceToken) {
         cacheDeviceToken(frame.result.deviceToken)
@@ -412,6 +418,10 @@ export function useWebSocket() {
 
         // Stop futile reconnect loops for config/auth errors.
         stopHeartbeat()
+        if (reconnectCooldownTimeoutRef.current) {
+          clearTimeout(reconnectCooldownTimeoutRef.current)
+          reconnectCooldownTimeoutRef.current = undefined
+        }
         if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
           ws.close(4001, 'Non-retryable gateway handshake error')
         }
@@ -615,14 +625,26 @@ export function useWebSocket() {
             connectRef.current(reconnectUrl.current, authTokenRef.current)
           }, timeout)
         } else {
-          log.error('Max reconnection attempts reached')
+          log.warn(`Max reconnection attempts reached, entering cooldown for ${reconnectCooldownMs / 1000}s`)
           addLog({
-            id: `error-${Date.now()}`,
+            id: `warn-${Date.now()}`,
             timestamp: Date.now(),
-            level: 'error',
+            level: 'warn',
             source: 'websocket',
-            message: 'Max reconnection attempts reached. Please reconnect manually.'
+            message: `Max reconnection attempts reached. Retrying automatically in ${Math.round(reconnectCooldownMs / 1000)}s.`
           })
+
+          // Do not stall permanently. Re-arm reconnect after a cooldown window.
+          reconnectAttemptsRef.current = 0
+          setConnection({ reconnectAttempts: 0 })
+
+          if (reconnectCooldownTimeoutRef.current) {
+            clearTimeout(reconnectCooldownTimeoutRef.current)
+          }
+
+          reconnectCooldownTimeoutRef.current = setTimeout(() => {
+            connectRef.current(reconnectUrl.current, authTokenRef.current)
+          }, reconnectCooldownMs)
         }
       }
 
@@ -669,6 +691,11 @@ export function useWebSocket() {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
       reconnectTimeoutRef.current = undefined
+    }
+
+    if (reconnectCooldownTimeoutRef.current) {
+      clearTimeout(reconnectCooldownTimeoutRef.current)
+      reconnectCooldownTimeoutRef.current = undefined
     }
 
     stopHeartbeat()
