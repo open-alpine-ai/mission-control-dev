@@ -89,7 +89,8 @@ export function useWebSocket() {
       normalized.includes('invalid connect params') ||
       normalized.includes('/client/id') ||
       normalized.includes('auth rate limit') ||
-      normalized.includes('rate limited')
+      normalized.includes('rate limited') ||
+      normalized.includes('pairing required')
     )
   }, [])
 
@@ -110,6 +111,9 @@ export function useWebSocket() {
     }
     if (normalized.includes('auth rate limit') || normalized.includes('rate limited')) {
       return 'Gateway authentication is rate limited. Wait briefly, then reconnect.'
+    }
+    if (normalized.includes('pairing required')) {
+      return 'Gateway requires pairing/token auth. In Mission Control, open Gateways and set the primary gateway token (OPENCLAW_GATEWAY_TOKEN), then reconnect.'
     }
     return 'Gateway handshake failed. Check gateway control UI origin and device identity settings, then reconnect.'
   }, [])
