@@ -228,12 +228,12 @@ Mission Control must connect with a valid gateway token/pairing state. Set token
 
 ---
 
-## Screenshot placeholders
+## Screenshots
 
-For Docker Hub listing, add these screenshots to your repo and reference them in README:
-- Login screen
-- Main dashboard
-- Gateway settings panel
-- Agent/session panel
+### Dashboard
 
-(If needed, capture from `http://127.0.0.1:3000` and store under `docs/assets/`.)
+![Mission Control Dashboard](mission-control.jpg)
+
+### Settings / Gateway state
+
+![Mission Control Settings](assets/mc-settings-v1.1.png)

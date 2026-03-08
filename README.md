@@ -52,6 +52,8 @@ If `AUTH_PASS` contains `#`, quote it (e.g. `AUTH_PASS="my#password"`) or use `A
 - Tags: `v1.1`, `latest`
 - Full deployment docs: [`docs/deployment.md`](docs/deployment.md)
 
+![Mission Control Settings](docs/assets/mc-settings-v1.1.png)
+
 ### Via docker run
 
 ```bash
