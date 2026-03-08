@@ -46,6 +46,47 @@ pnpm dev                # http://localhost:3000
 Initial login is seeded from `AUTH_USER` / `AUTH_PASS` on first run.
 If `AUTH_PASS` contains `#`, quote it (e.g. `AUTH_PASS="my#password"`) or use `AUTH_PASS_B64`.
 
+## Docker (Docker Hub)
+
+- Image: `openalpineai/mission-control`
+- Tags: `v1.1`, `latest`
+- Full deployment docs: [`docs/deployment.md`](docs/deployment.md)
+
+### Via docker run
+
+```bash
+docker run -d \
+  --name mission-control \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  -v mission-control-data:/app/.data \
+  -e AUTH_USER=admin \
+  -e AUTH_PASS='change-me-now' \
+  -e API_KEY='change-me-api-key' \
+  openalpineai/mission-control:v1.1
+```
+
+### Via docker compose
+
+```yaml
+services:
+  mission-control:
+    image: openalpineai/mission-control:v1.1
+    container_name: mission-control
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      AUTH_USER: "admin"
+      AUTH_PASS: "change-me-now"
+      API_KEY: "change-me-api-key"
+    volumes:
+      - mission-control-data:/app/.data
+
+volumes:
+  mission-control-data:
+```
+
 ## Project Status
 
 ### What Works

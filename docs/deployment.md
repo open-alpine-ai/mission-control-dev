@@ -1,137 +1,214 @@
 # Deployment Guide
 
-## Prerequisites
+This guide is written in a Docker Hub friendly format (similar to LinuxServer-style docs), including:
+- `docker run` quickstart
+- fully commented `docker-compose.yml` examples
+- environment variables and volume mappings
+- common operations and troubleshooting
 
-- **Node.js** >= 20 (LTS recommended)
-- **pnpm** (installed via corepack: `corepack enable && corepack prepare pnpm@latest --activate`)
+---
 
-### Ubuntu / Debian
+## What this image does
 
-`better-sqlite3` requires native compilation tools:
+`openalpineai/mission-control` runs the Mission Control web app for OpenClaw operations:
+- agent/session visibility
+- gateway connectivity and health checks
+- task/ops workflows
+- local SQLite-backed state in `/app/.data`
 
-```bash
-sudo apt-get update
-sudo apt-get install -y python3 make g++
-```
+It is a single-container deployment with no mandatory external DB.
 
-### macOS
+---
 
-Xcode command line tools are required:
+## Image
 
-```bash
-xcode-select --install
-```
+- Docker Hub: `openalpineai/mission-control`
+- Tags:
+  - `v1.1`
+  - `latest`
 
-## Quick Start (Development)
+---
 
-```bash
-cp .env.example .env.local
-pnpm install
-pnpm dev
-```
-
-Open http://localhost:3000. Login with `AUTH_USER` / `AUTH_PASS` from your `.env.local`.
-
-## Production (Direct)
+## Quick Start — via Docker Run
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm build
-pnpm start
-```
-
-The `pnpm start` script binds to `0.0.0.0:3005`. Override with:
-
-```bash
-PORT=3000 pnpm start
-```
-
-**Important:** The production build bundles platform-specific native binaries. You must run `pnpm install` and `pnpm build` on the same OS and architecture as the target server. A build created on macOS will not work on Linux.
-
-## Production (Docker)
-
-```bash
-docker build -t mission-control .
-docker run -p 3000:3000 \
+docker run -d \
+  --name mission-control \
+  --restart unless-stopped \
+  -p 3000:3000 \
   -v mission-control-data:/app/.data \
   -e AUTH_USER=admin \
-  -e AUTH_PASS=your-secure-password \
-  -e API_KEY=your-api-key \
-  mission-control
+  -e AUTH_PASS='change-me-now' \
+  -e API_KEY='change-me-api-key' \
+  openalpineai/mission-control:v1.1
 ```
 
-The Docker image:
-- Builds from `node:20-slim` with multi-stage build
-- Compiles `better-sqlite3` natively inside the container (Linux x64)
-- Uses Next.js standalone output for minimal image size
-- Runs as non-root user `nextjs`
-- Exposes port 3000 (override with `-e PORT=8080`)
+Open: `http://localhost:3000`
 
-### Persistent Data
+---
 
-SQLite database is stored in `/app/.data/` inside the container. Mount a volume to persist data across restarts:
+## Quick Start — via Docker Compose (recommended)
+
+Create `docker-compose.yml`:
+
+```yaml
+services:
+  mission-control:
+    image: openalpineai/mission-control:v1.1
+    container_name: mission-control
+
+    # Auto-start after reboot / daemon restart
+    restart: unless-stopped
+
+    ports:
+      # host:container
+      - "3000:3000"
+
+    environment:
+      # Initial admin username
+      AUTH_USER: "admin"
+
+      # Initial admin password (quote values containing #)
+      AUTH_PASS: "change-me-now"
+
+      # API key for integrations/headless requests
+      API_KEY: "change-me-api-key"
+
+      # Optional: container listen port (default 3000 in container image)
+      # PORT: "3000"
+
+      # Optional: allowed hostnames for production host header checks
+      # MC_ALLOWED_HOSTS: "localhost,127.0.0.1,mc.example.com"
+
+      # Optional: OpenClaw home path if mounted into container
+      # OPENCLAW_HOME: "/openclaw"
+
+    volumes:
+      # Persist SQLite DB and app state
+      - mission-control-data:/app/.data
+
+      # Optional: mount host OpenClaw directory read-only
+      # - /opt/openclaw:/openclaw:ro
+
+    # Optional healthcheck override (image already includes health checks)
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:3000/api/status"]
+    #   interval: 30s
+    #   timeout: 5s
+    #   retries: 5
+
+volumes:
+  mission-control-data:
+```
+
+Start:
 
 ```bash
-docker run -v /path/to/data:/app/.data ...
+docker compose up -d
 ```
 
-## Environment Variables
+View logs:
 
-See `.env.example` for the full list. Key variables:
+```bash
+docker compose logs -f mission-control
+```
+
+Stop:
+
+```bash
+docker compose down
+```
+
+---
+
+## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `AUTH_USER` | Yes | `admin` | Admin username (seeded on first run) |
-| `AUTH_PASS` | Yes | - | Admin password |
-| `AUTH_PASS_B64` | No | - | Base64-encoded admin password (overrides `AUTH_PASS` if set) |
-| `API_KEY` | Yes | - | API key for headless access |
-| `PORT` | No | `3005` (direct) / `3000` (Docker) | Server port |
-| `OPENCLAW_HOME` | No | - | Path to OpenClaw installation |
-| `MC_ALLOWED_HOSTS` | No | `localhost,127.0.0.1` | Allowed hosts in production |
+| `AUTH_PASS` | Yes* | - | Admin password |
+| `AUTH_PASS_B64` | No | - | Base64-encoded admin password (overrides `AUTH_PASS`) |
+| `API_KEY` | Yes | - | API key for headless/integration access |
+| `PORT` | No | `3000` (Docker image) | HTTP port inside container |
+| `OPENCLAW_HOME` | No | - | Path to OpenClaw install if mounted |
+| `MC_ALLOWED_HOSTS` | No | `localhost,127.0.0.1` | Comma-separated allowed hosts |
+
+\* `AUTH_PASS_B64` can be used instead of `AUTH_PASS`.
+
+---
+
+## Volumes
+
+| Container Path | Purpose |
+|----------------|---------|
+| `/app/.data` | SQLite database and persistent app state |
+
+If you do not mount `/app/.data`, data will be lost when container is removed.
+
+---
+
+## Typical Operations
+
+### Pull latest image
+
+```bash
+docker pull openalpineai/mission-control:latest
+```
+
+### Upgrade from older tag
+
+```bash
+docker pull openalpineai/mission-control:latest
+docker stop mission-control
+docker rm mission-control
+docker run -d \
+  --name mission-control \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  -v mission-control-data:/app/.data \
+  -e AUTH_USER=admin \
+  -e AUTH_PASS='change-me-now' \
+  -e API_KEY='change-me-api-key' \
+  openalpineai/mission-control:latest
+```
+
+### Verify running container
+
+```bash
+docker ps
+docker logs -f mission-control
+```
+
+---
+
+## Security Notes
+
+- Change default credentials immediately.
+- Use strong `AUTH_PASS` and rotate `API_KEY` periodically.
+- For internet exposure, run behind TLS reverse proxy (Caddy/Nginx/Traefik).
+- Restrict `MC_ALLOWED_HOSTS` in production.
+
+---
 
 ## Troubleshooting
 
-### "Module not found: better-sqlite3"
+### AUTH_PASS with `#` not working
 
-Native compilation failed. On Ubuntu/Debian:
+Use quotes or `AUTH_PASS_B64`:
+
 ```bash
-sudo apt-get install -y python3 make g++
-rm -rf node_modules
-pnpm install
-```
-
-### AUTH_PASS with "#" is not working
-
-In dotenv files, `#` starts a comment unless the value is quoted.
-
-Use one of these:
-- `AUTH_PASS="my#password"`
-- `AUTH_PASS_B64=$(echo -n 'my#password' | base64)`
-
-### "pnpm-lock.yaml not found" during Docker build
-
-If your deployment context omits `pnpm-lock.yaml`, Docker build now falls back to
-`pnpm install --no-frozen-lockfile`.
-
-For reproducible builds, include `pnpm-lock.yaml` in the build context.
-
-### "Invalid ELF header" or "Mach-O" errors
-
-The native binary was compiled on a different platform. Rebuild:
-```bash
-rm -rf node_modules .next
-pnpm install
-pnpm build
+AUTH_PASS="my#password"
+# or
+AUTH_PASS_B64=$(echo -n 'my#password' | base64)
 ```
 
 ### Database locked errors
 
-Ensure only one instance is running against the same `.data/` directory. SQLite uses WAL mode but does not support multiple writers.
+Run only one writer against the same `/app/.data` volume.
 
-### "Gateway error: origin not allowed"
+### Gateway error: origin not allowed
 
-Your gateway is rejecting the Mission Control browser origin. Add the Control UI origin
-to your gateway config allowlist, for example:
+Add your Mission Control origin to gateway allowlist, e.g.:
 
 ```json
 {
@@ -143,9 +220,20 @@ to your gateway config allowlist, for example:
 }
 ```
 
-Then restart the gateway and reconnect from Mission Control.
+Restart gateway after changes.
 
-### "Gateway error: device identity required"
+### Gateway error: pairing required
 
-Device identity signing uses WebCrypto and requires a secure browser context.
-Open Mission Control over HTTPS (or localhost), then reconnect.
+Mission Control must connect with a valid gateway token/pairing state. Set token in MC gateway settings and reconnect.
+
+---
+
+## Screenshot placeholders
+
+For Docker Hub listing, add these screenshots to your repo and reference them in README:
+- Login screen
+- Main dashboard
+- Gateway settings panel
+- Agent/session panel
+
+(If needed, capture from `http://127.0.0.1:3000` and store under `docs/assets/`.)
